@@ -73,13 +73,11 @@ class SocketHandler:
                     raise ValueError(f"Missing required header {header}.")
     
     def process_request(self):
-
+        raise NotImplementedError()
                 
-                
-
+            
     def read(self):
         self._read()
-        
         if not self._httpheaders_len:
             self._process_proto_header()
 
