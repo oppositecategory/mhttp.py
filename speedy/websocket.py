@@ -17,7 +17,8 @@ class WebServer:
         self.storage = []
 
     def _accept_request(self, s, sock_addr):
-        raise NotImplementedError()
+        handler = protocol.SocketHandler(s, sock_addr)
+        handler.read()
             
     def run(self):
         lsock.listen(self.max_conn)

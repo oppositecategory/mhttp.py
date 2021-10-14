@@ -11,6 +11,15 @@ headers = ("byteorder",
             "content-encoding",
           )
 
+
+def json_decode(raw_bytes, encoding):
+    decoded = io.TextIOWrapper(
+        io.BytesIO(raw_bytes, encoding=encoding,newline="")
+    )
+    obj = json.load(decoded)
+    decoded.closer()
+    return obj
+
 class SocketHandler:
     """ Implements message protocol for webserever.
 
@@ -24,7 +33,7 @@ class SocketHandler:
         self._recv_buffer = b"" # Bytes type not str
         self._httpheaders_len = None
         self.httpheader = None
-
+    
     def _read(self):
         try:
             data = self.sock.recv(4096)
@@ -69,17 +78,40 @@ class SocketHandler:
             self._recv_buffer = self._recv_buffer[headerlen:]
             self.httpheader = self._extract_http_header(header)
             for header in headers:
-                if header not in self.httpheader:
+                if header not in self.httpheader.keys():
                     raise ValueError(f"Missing required header {header}.")
     
     def process_request(self):
-        raise NotImplementedError()
-                
-            
+        content_len = self.httpheader['content-length']
+        if not len(self._recv_buffer) >= content_len:
+            return 
+        data = self._recv_buffer[:content_len]
+        self._recv_buffer = self._recv_buffer[content_len:]
+        if self.httpheader['content-type'] == "text/json":
+            encoding = self.httpheader['content-encoding']
+            self.request = json_decode(data, encoding)
+            print("Recived request", repr(self.request), "from", self.addr)
+        else:
+            self.request = data 
+            print(f"Recieved {self.httpheader["content-type"]} request from {self.addr}.")
+
+    
     def read(self):
         self._read()
         if not self._httpheaders_len:
             self._process_proto_header()
+        
+        if not self.httpheader:
+            self._process_http_headers()
+        
+        self.process_request()
+
+    def _write(self):
+        raise NotImplementedError()
+
+    def write(self):
+        raise NotImplementedError()
+
 
 
         
