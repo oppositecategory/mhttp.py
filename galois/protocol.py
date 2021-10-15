@@ -4,6 +4,7 @@ import io
 import struct
 import socket
 import threading
+from abc import ABC, abstractmethod
 
 # ---GLOBAL VARIABLES---
 headers = ("byteorder",
@@ -30,42 +31,34 @@ def raw_json_encode(resp):
     return raw_bytes
 
 
-class SocketHandler:
-    """ Implements message protocol for webserever.
+class SocketHandler(ABC):
+    """ Virtual class implementing the mHTTP (minimal HTTP) protocol. 
+        The class encapsulates the protocol-handling code to distinguish it from the I/O code 
+        so one can extend it later on according to his will to use AsyncIO/threading/select and etc. 
 
-        The protocol imititates HTTP protocol but a more simiplified version named mHTTP for minimal HTTP.
         # TODO: 
             - Add HTTP verbs.
             - Transfer arbitrary binary data over the network. As of now only handles JSON.
     """
-    def __init__(self, sock:socket.socket, addr:tuple):
+    def __init__(self, sock: socket.socket, addr: tuple):
         self.sock = sock 
-        self.addr = adddr
-        # Notes buffers are a bytes type.
-        self._recv_buffer = b"" 
-        self._sent_buffer = b"" # Buffer for holding the response.
-        self._httpheaders_len = None
-        self.httpheader = None
-        self.request = None
+        self.addr = addr 
+        # Notes buffers are a bytes-type.
+        self._recv_buffer = b""
+        self._sent_buffer = b""
+        self._httpheaders_len = None 
+        self.httpheader = None 
+        self.json_request = None 
 
-        self.response = b""
+        self.json_response = b""
         self.response_created = False
         self.response_protoheader = None
         self.response_httpheader = None
 
-        self.filesystem_lock = threading.Lock()
-    
+    @abstractmethod
     def _read(self):
-        try:
-            data = self.sock.recv(4096)
-        except BlockingIOError:
-            pass 
-        else:
-            if data:
-                self._recv_buffer += data
-            else:
-                raise RuntimeError("Connection closed.")
-    
+        pass
+
     def _process_proto_header(self):
         # Message Protocol assumes the first 2 bytes are reserved for the
         # variable-length of the HTTP header.
@@ -77,8 +70,8 @@ class SocketHandler:
                 ">H", self._recv_buffer[:headerlen]
             )[0]
             # Points "point" to start of the HTTP header.
-            self._recv_buffer = self._recv_buffer[headerlen:] 
-    
+            self._recv_buffer = self._recv_buffer[headerlen:]
+
     def _extract_HTTP_header(self, header):
         """
         Example mHTTP header:
@@ -101,7 +94,7 @@ class SocketHandler:
             value = value.strip()
             headers[header] = value 
         return headers
-            
+    
     def _process_HTTP_headers(self):
         headers = {}
         headerlen = self._httpheaders_len
@@ -113,57 +106,38 @@ class SocketHandler:
                 if header not in self.httpheader.keys():
                     raise ValueError(f"Missing required header {header}.")
     
+    @abstractmethod
     def process_request(self):
-        content_len = self.httpheader['content-length']
-        if not len(self._recv_buffer) >= content_len:
-            return 
-        data = self._recv_buffer[:content_len] # Actual json content
-        self._recv_buffer = self._recv_buffer[content_len:]
-        if self.httpheader['content-type'] == "text/json":
-            encoding = self.httpheader['content-encoding']
-            self.request = json_decode(data, encoding)
-            print("Recived request", repr(self.request), "from", self.addr)
-            self.write() # Callback function to answer request
-        else:
-            self.request = data 
-            print(f"Recieved {self.httpheader["content-type"]} request from {self.addr}.")
-            self.write() # Callback
-
+        pass
+    
+    @abstractmethod
     def read(self):
-        self._read()
-        if not self._httpheaders_len:
-            self._process_proto_header()
-        
-        if not self.httpheader:
-            self._process_HTTP_headers()
-        
-        self.process_request()
+        pass
 
-    def _handle_database_queries(self):
+    @abstractmethod
+    def _write_to_filesystem(self, data):
+        pass
+
+    def _read_from_filesystem(self):
+        action = self.json_request['action']
+        assert self.json_request['data'] == None 
+        response = self.json_request 
+        response['data'] = DB[response['query']]
+        self.response_created = True
+        self.json_response += raw_json_encode(response)
+
+    @abstractmethod
+    def _write_to_filesystem(self):
+        """ Unlike reading from the filesystem, writing to it can result in race condition hence we leave it 
+            as abstact class to be implemented by the extending class.
+        """
+        pass
+
+    @abstractmethod
+    def query_database(self):
         """ Handles database queries and echoes a message to client with requested data.
         """
-        action = self.request['action']
-        if action == 'read':
-            assert self.request['data'] == None 
-            response = self.request 
-            response['data'] = DB[response['query']]
-            self.response_created = True
-            self.response += raw_json_encode(response)
-        elif action == 'write':
-            # To prevent race conditions a simple mutex lock is acquired.
-            # NOTE: No computation is actually done here but as a good 
-            # practice we add mutex lock whenever we deal with data shared between threads.
-            self.filesystem_lock.acquire()
-            response = self.request 
-            response['action'] = 'read' # Protocol assumes read action when sending data over network.
-            DB[self.request['query']] = self.request['data']
-            self.response_created = True 
-            self.response += raw_json_encode(response)
-            self.filesystem_lock.release()
-
-    def _create_respone_binary(self):
-        # TODO: Handling binary data sent over the network.
-        raise NotImplementedError()()
+        pass
     
     def _create_response_HTTPheader(self):
         headers = ['GET 127.0.0.1 HTTP/1.1',
@@ -177,6 +151,92 @@ class SocketHandler:
         # Write length of mHTTP header in a big-endian format with 2 bytes.
         self.response_protoheader = struct.pack(">H", len(self.response_httpheader))
     
+    @abstractmethod
+    def _write(self):
+        pass
+        
+    def create_response(self):
+        if not self.response_created:
+            self._query_database_and_create_response()()
+        
+        if not self.response_protoheader and self.response_created:
+            self._create_response_HTTPheader()
+        
+        if not self.response_protoheader and self.response_httpheader != None:
+            self._create_response_proto_header()
+        
+        # Accumulate whole headers together to be sent in right order in the buffer.
+        self._sent_buffer += self.response_protoheader
+        self._sent_buffer += self.httpheader
+        self._sent_buffer += self.response
+
+    @abstractmethod 
+    class write(self):
+        pass
+
+
+class NonBlockingSocketHandler(SocketHandler):
+    """ Implementing the protocol over non-blocking sockets with Lock for reading from the filesystem.
+        No use of Queue/selector to control threads. 
+    """
+    def __init__(self):
+        super(sock, addr).__init__()
+        self.filesystem_lock = threading.Lock()
+    
+    def _read(self):
+        try:
+            data = self.sock.recv(4096)
+        except BlockingIOError:
+            pass 
+        else:
+            if data:
+                self._recv_buffer += data
+            else:
+                raise RuntimeError("Connection closed.")
+    
+    def process_request(self):
+        content_len = self.httpheader['content-length']
+        if not len(self._recv_buffer) >= content_len:
+            return 
+        data = self._recv_buffer[:content_len] # Actual json content
+        self._recv_buffer = self._recv_buffer[content_len:]
+        if self.httpheader['content-type'] == "text/json":
+            encoding = self.httpheader['content-encoding']
+            self.json_request = json_decode(data, encoding)
+            print("Recived request", repr(self.request), "from", self.addr)
+            self.write() # Callback function to answer request
+        else:
+            self.json_request = data 
+            print(f"Recieved {self.httpheader["content-type"]} request from {self.addr}.")
+            self.write() # Callback
+                
+    def read(self):
+        self._read()
+        if not self._httpheaders_len:
+            self._process_proto_header()
+        
+        if not self.httpheader:
+            self._process_HTTP_headers()
+        
+        self.process_request()
+    
+    def _write_to_filesystem(self):
+        # NOTE: No computation is actually done here but as a good 
+        # practice we add mutex lock whenever we deal with data shared between threads.
+        self.filesystem_lock.acquire()
+        response = self.json_request 
+        response['action'] = 'read' # Protocol assumes read action when sending data over network.
+        DB[self.json_request['query']] = self.json_request['data']
+        self.response_created = True 
+        self.query += raw_json_encode(response)
+        self.filesystem_lock.release()
+    
+    def query_database(self):
+        if self.json_request['action'] == 'read':
+            self._read_from_filesystem()
+        else:
+            self._write_to_filesystem(self.json_request['query'])
+
     def _write(self):
         try:
             resp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -193,22 +253,11 @@ class SocketHandler:
             pass
         else:
             raise RuntimeError(f"Lost connection to {self.addr}.")
-
+    
     def write(self):
-        if not self.response_created:
-            self._create_response()
-        
-        if not self.response_protoheader and self.response_created:
-            self._create_response_HTTPheader()
-        
-        if not self.response_protoheader and self.response_httpheader != None:
-            self._create_response_proto_header()
-        
-        # Accumulate whole headers together to be sent in right order in the buffer.
-        self._sent_buffer += self.response_protoheader
-        self._sent_buffer += self.httpheader
-        self._sent_buffer += self.response
-
+        # Wrapper to break the functionality of creating a full response and writing back to function
+        # so we can embed the create_response() functionality in the virtual class.
+        self.create_response()
         self._write()
         
         

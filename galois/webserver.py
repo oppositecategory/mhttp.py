@@ -1,9 +1,6 @@
 import threading 
 import socket
-import os 
-import time 
 import logging
-import abc
 
 import protocol
 
@@ -18,7 +15,7 @@ class WebServer:
         self.storage = []
 
     def _handle_request(self, s, sock_addr):
-        handler = protocol.SocketHandler(s, sock_addr)
+        handler = protocol.NonBlockingSocketHandler(s, sock_addr)
         handler.read()
             
     def run(self):
