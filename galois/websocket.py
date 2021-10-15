@@ -3,10 +3,23 @@ import socket
 import os 
 import time 
 import logging
+import abc
 
 import protocol
 
-     
+
+class NonBlockingFactory:
+    """ Abstract Factory class  implementing"""
+    def __init__(self):
+        pass
+
+
+
+class NonBlockingIOSocketWebServer:
+    def __init__(self):
+        pass
+
+
 class WebServer:
     def __init__(self, addr:str, port:int, max_conn:int):
         self.server_addr = addr 
@@ -16,7 +29,7 @@ class WebServer:
         lsock.bind((self.server_addr, self.server_port))
         self.storage = []
 
-    def _accept_request(self, s, sock_addr):
+    def _handle_request(self, s, sock_addr):
         handler = protocol.SocketHandler(s, sock_addr)
         handler.read()
             

@@ -33,6 +33,8 @@ class SocketHandler:
         self._recv_buffer = b"" # Bytes type not str
         self._httpheaders_len = None
         self.httpheader = None
+        self.request = None
+        self.response_created = False
     
     def _read(self):
         try:
@@ -47,7 +49,7 @@ class SocketHandler:
     
     def _process_proto_header(self):
         # Message Protocol assumes the first 2 bytes are reserved for the
-        # variable-length of the JSON header.
+        # variable-length of the HTTP header.
         headerlen = 2
         if len(self._recv_buffer) >= headerlen:
             # Using format ">H" where ">" stands for big-endian format and 
@@ -91,9 +93,11 @@ class SocketHandler:
             encoding = self.httpheader['content-encoding']
             self.request = json_decode(data, encoding)
             print("Recived request", repr(self.request), "from", self.addr)
+            self._create_response_json() # Callback function to answer request
         else:
             self.request = data 
             print(f"Recieved {self.httpheader["content-type"]} request from {self.addr}.")
+            self._create_response_binary_format() # Callback
 
     
     def read(self):
@@ -108,9 +112,9 @@ class SocketHandler:
 
     def _write(self):
         raise NotImplementedError()
-
-    def write(self):
-        raise NotImplementedError()
+    
+    def _create_response_json(self):
+        action = self.reques
 
 
 
