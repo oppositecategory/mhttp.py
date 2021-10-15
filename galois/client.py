@@ -1,5 +1,6 @@
 import socket 
 import threading 
+from queue import Queue
 
 
 HOST = "127.0.0.1"  # The server's hostname or IP address
@@ -14,6 +15,7 @@ def start_connections(host, port, num_conns):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         set.blocking(False)
         sock.connect_ex(addr)
+        #pool.put(sock)
         
 
 
@@ -23,3 +25,4 @@ if len(sys.argv) != 4:
 
 host, port, num_conns = sys.argv[1:4]
 start_connections(host, int(port), int(num_conns))
+pool = Queue()

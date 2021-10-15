@@ -254,11 +254,15 @@ class NonBlockingSocketHandler(SocketHandler):
         else:
             raise RuntimeError(f"Lost connection to {self.addr}.")
     
-    def write(self):
+    def write(self, addr=None):
         # Wrapper to break the functionality of creating a full response and writing back to function
         # so we can embed the create_response() functionality in the virtual class.
-        self.create_response()
-        self._write()
+        if not addr: # Socket holds data to be sent back
+            self.create_response()
+            self._write()
+        
+        
+
         
         
         
