@@ -1,6 +1,6 @@
-# Galois
+# mHTTP.py 
 
-Galois is a small multithreaded websocket written in Python implementing message protocol above the TCP layer that mimicks the HTTP protocol with Elliptic Curve-Diffie-Hellman (ECDH) scheme to encrypt communication. 
-Galois is in development and was written in order to get a better grasp of networking and Elliptic Curve Cryptography.
+mHTTP is a small multithreaded websocket written in Python implementing application layer protocol above the TCP layer that mimicks the HTTP, mHTTP (minimal http), with Elliptic Curve-Diffie-Hellman (ECDH) scheme to encrypt communication. 
+
 
 
