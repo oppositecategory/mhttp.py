@@ -15,7 +15,6 @@ headers = ("byteorder",
 DB = [f'Message {i}' for i in range(10)] 
 # ---GLOBAL VARIABLES---
 
-
 def json_decode(raw_bytes, encoding):
     # Decode raw data sent over a socket into json using the encoding the client used.
     decoded = io.TextIOWrapper(
@@ -31,7 +30,7 @@ def raw_json_encode(resp):
     return raw_bytes
 
 
-class SocketHandler(ABC):
+class SocketProtocol(ABC):
     """ Virtual class implementing the mHTTP (minimal HTTP) protocol. 
         The class encapsulates the protocol-handling code to distinguish it from the I/O code 
         so one can extend it later on according to his will to use AsyncIO/threading/select and etc. 
@@ -43,17 +42,17 @@ class SocketHandler(ABC):
     def __init__(self, sock: socket.socket, addr: tuple):
         self.sock = sock 
         self.addr = addr 
-        # Notes buffers are a bytes-type.
+        # NOTE: Buffers are bytes type and not str.
         self._recv_buffer = b""
         self._sent_buffer = b""
-        self._httpheaders_len = None 
-        self.httpheader = None 
+        self._mHTTPheaders_len = None 
+        self.mHTTPheader = None 
         self.json_request = None 
 
         self.json_response = b""
         self.response_created = False
         self.response_protoheader = None
-        self.response_httpheader = None
+        self.response_mHTTPheader = None
 
     @abstractmethod
     def _read(self):
@@ -72,7 +71,7 @@ class SocketHandler(ABC):
             # Points "point" to start of the HTTP header.
             self._recv_buffer = self._recv_buffer[headerlen:]
 
-    def _extract_HTTP_header(self, header):
+    def _extract_mHTTP_header(self, header):
         """
         Example mHTTP header:
 
@@ -89,21 +88,21 @@ class SocketHandler(ABC):
         lines = lines[1:] # First line is a HTTP GET.
         for line in lines:
             assert len(line.split(':')) == 2
-            header, value = line.strip(':')
+            header, value = line.split(':')
             header = header.strip()
             value = value.strip()
             headers[header] = value 
         return headers
     
-    def _process_HTTP_headers(self):
+    def _process_mHTTP_headers(self):
         headers = {}
-        headerlen = self._httpheaders_len
+        headerlen = self._mHTTPheaders_len
         if len(self._recv_buffer) >= headerlen:
             header = self._recv_buffer[:headerlen].decode("utf-8")
             self._recv_buffer = self._recv_buffer[headerlen:]
-            self.httpheader = self._extract_HTTP_header(header)
+            self.mHTTPheader = self._extract_mHTTP_header(header)
             for header in headers:
-                if header not in self.httpheader.keys():
+                if header not in self.mHTTPheader.keys():
                     raise ValueError(f"Missing required header {header}.")
     
     @abstractmethod
@@ -139,15 +138,15 @@ class SocketHandler(ABC):
         """
         pass
     
-    def _create_response_HTTPheader(self):
+    def _create_mHTTPheader(self):
         headers = ['GET 127.0.0.1 HTTP/1.1',
                   'bytorder: big-endian',
                   'content-type: text/json',
                   f'content-length: {len(self.response)}',
                   'content-encoding: utf-8']
-        self.response_httpheader = bytes('\n'.join(headers),encoding='utf-8')
+        self.response_mHTTPheader = bytes('\n'.join(headers),encoding='utf-8')
 
-    def _create_response_proto_header(self):
+    def _create_proto_header(self):
         # Write length of mHTTP header in a big-endian format with 2 bytes.
         self.response_protoheader = struct.pack(">H", len(self.response_httpheader))
     
@@ -157,13 +156,13 @@ class SocketHandler(ABC):
         
     def create_response(self):
         if not self.response_created:
-            self._query_database_and_create_response()()
+            self._query_database()()
         
         if not self.response_protoheader and self.response_created:
-            self._create_response_HTTPheader()
+            self._create_HTTPheader()
         
         if not self.response_protoheader and self.response_httpheader != None:
-            self._create_response_proto_header()
+            self._create_proto_header()
         
         # Accumulate whole headers together to be sent in right order in the buffer.
         self._sent_buffer += self.response_protoheader
@@ -175,9 +174,9 @@ class SocketHandler(ABC):
         pass
 
 
-class NonBlockingSocketHandler(SocketHandler):
-    """ Implementing the protocol over non-blocking sockets with Lock for reading from the filesystem.
-        No use of Queue/selector to control threads. 
+class ThreadedSocketProtocol(SocketProtocol):
+    """ Implementing the protocol for multi-threaded server.
+        NOTE: ThreadedSocketHandler uses mutex lock for writing to filesystem.
     """
     def __init__(self):
         super(sock, addr).__init__()
@@ -195,30 +194,29 @@ class NonBlockingSocketHandler(SocketHandler):
                 raise RuntimeError("Connection closed.")
     
     def process_request(self):
-        content_len = self.httpheader['content-length']
+        content_len = self.mHTTPheader['content-length']
         if not len(self._recv_buffer) >= content_len:
             return 
         data = self._recv_buffer[:content_len] # Actual json content
         self._recv_buffer = self._recv_buffer[content_len:]
-        if self.httpheader['content-type'] == "text/json":
-            encoding = self.httpheader['content-encoding']
+        if self.mHTTPheader['content-type'] == "text/json":
+            encoding = self.mHTTPheader['content-encoding']
             self.json_request = json_decode(data, encoding)
             print("Recived request", repr(self.request), "from", self.addr)
-            self.write() # Callback function to answer request
         else:
             self.json_request = data 
-            print(f"Recieved {self.httpheader["content-type"]} request from {self.addr}.")
-            self.write() # Callback
+            print(f"Recieved {self.mHTTPheader["content-type"]} request from {self.addr}.")
                 
     def read(self):
         self._read()
-        if not self._httpheaders_len:
+        if not self._mHTTPheaders_len:
             self._process_proto_header()
         
         if not self.httpheader:
-            self._process_HTTP_headers()
+            self._process_mHTTP_headers()
         
         self.process_request()
+        self.callback_response() # Callback function to return a mHTTP response for request.
     
     def _write_to_filesystem(self):
         # NOTE: No computation is actually done here but as a good 
@@ -237,12 +235,13 @@ class NonBlockingSocketHandler(SocketHandler):
         else:
             self._write_to_filesystem(self.json_request['query'])
 
-    def _write(self):
+    def _create_mHTTP_response(self):
         try:
             resp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             resp_sock.connect(self.addr)
             resp_sock.setblocking(False)
 
+            # Simple mechanism to ensure all data is sent.
             toal_sent = 0 
             while bytes_sent < len(self._sent_buffer):
                 sent = resp_sock.send(self._sent_buffer[bytes_sent:])
@@ -254,12 +253,12 @@ class NonBlockingSocketHandler(SocketHandler):
         else:
             raise RuntimeError(f"Lost connection to {self.addr}.")
     
-    def write(self, addr=None):
+    def callback_response(self):
         # Wrapper to break the functionality of creating a full response and writing back to function
         # so we can embed the create_response() functionality in the virtual class.
         if not addr: # Socket holds data to be sent back
             self.create_response()
-            self._write()
+            self._create_mHTTP_response()
         
         
 
