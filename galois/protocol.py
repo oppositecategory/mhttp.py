@@ -29,6 +29,7 @@ def raw_json_encode(resp):
     raw_bytes = bytes(json, 'utf-8')
     return raw_bytes
 
+
 class SocketHandler:
     """ Implements message protocol for webserever.
 
@@ -139,7 +140,7 @@ class SocketHandler:
         self.process_request()
 
     def _handle_database_queries(self):
-        """ Handles database queries and create a echo message to client with requested data.
+        """ Handles database queries and echoes a message to client with requested data.
         """
         action = self.request['action']
         if action == 'read':
