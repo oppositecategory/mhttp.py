@@ -2,29 +2,25 @@ from abc import abstractmethod, ABC
 
 
 
-class Base():
-    def __init__(self, a, b):
+class A():
+    def __init__(self, a):
         self.a = a 
+
+class B():
+    def __init__(self, b):
         self.b = b 
 
-    def compute(self):
-        print(self.a+self.b)
-
+class C(A,B):
+    def __init__(self, a, b):
+        A.__init__(self,a)
+        B.__init__(self,b)
     
-class Derived(Base):
-    def __init__(self,a,b):
-        super().__init__(a,b)
+    def print(self):
+        print(f'a: {self.a}, b: {self.b}')
         
-    def compute(self):
-        super().compute()
-        print("But in the derived class.")
     
 
-x = Derived(1,1)
-x.compute()
-
-
-class mHTTPProtocol(ABC):
-    def __init__(self):
-        pass
     
+
+x = C(1,3)
+x.print()

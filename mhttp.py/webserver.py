@@ -7,24 +7,22 @@ import threading
 import logging
 from abc import ABC, abstractmethod
 
-import protocol
+import protocol 
 
 # Global variables 
-DB = [f'bob number {i}' for i in range(10)]
+DB = [f'Bob number {i}' for i in range(10)]
 
 def raw_json_encode(resp):
     dump = json.dumps(resp)
     raw_bytes = bytes(dump, 'utf-8')
     return raw_bytes
 
-class ServerSocketHandler:
+class ServerSocketHandler(protocol.mHTTPProtocol):
     def __init__(self, sock, addr):
+        super().__init__()
         self.sock = sock 
         self.addr = addr
-        self._buffer = b""
-        self._mHTTPheaders_len = None 
-        self.mHTTPheader = None 
-        self.json = None 
+        
 
         self._send_buffer = b""
         self.response_flag = False 
@@ -45,20 +43,7 @@ class ServerSocketHandler:
                 print('Connection with  {} closed.'.format(self.addr))
                 self.sock.close()
                 #raise RuntimeError("Connection closed.")
-
-    def _process_proto_header(self):
-        # Message Protocol assumes the first 2 bytes are reserved for the
-        # variable-length of the HTTP header.
-        headerlen = 2
-        if len(self._buffer) >= headerlen:
-            # Using format ">H" where ">" stands for big-endian format and 
-            # "H" stands for unsigned char i.e 2-byte length data.
-            self._mHTTPheaders_len = struct.unpack(
-                ">H", self._buffer[:headerlen]
-            )[0]
-            # Points "point" to start of the HTTP header.
-            self._buffer = self._buffer[headerlen:]
-
+    
     def _extract_mHTTP_header(self, header):
         """
         Example mHTTP header:
@@ -82,32 +67,11 @@ class ServerSocketHandler:
             headers[header] = value 
         return headers
     
-    def _process_mHTTP_headers(self):
-        headers = {}
-        headerlen = self._mHTTPheaders_len
-        #print(self._buffer[:headerlen])
-        if len(self._buffer) >= headerlen:
-            header = self._buffer[:headerlen].decode("utf-8")
-            self._buffer = self._buffer[headerlen:]
-            self.mHTTPheader = self._extract_mHTTP_header(header)
-            for header in headers:
-                if header not in self.mHTTPheader.keys():
-                    raise ValueError(f"Missing required header {header}.")
-
-    def _process_socket_data(self):
-        content_len = int(self.mHTTPheader['content-length'])
-        if not len(self._buffer) >= content_len:
-            return 
-        data = self._buffer[:content_len] # Actual json content
-        self._buffer = self._buffer[content_len:]
-        if self.mHTTPheader['content-type'] == "text/json":
-            encoding = self.mHTTPheader['content-encoding']
-            decoded = data.decode(encoding)
-            self.json = json.loads(decoded)
+    def _server_socket_process_wrapper(self):
+        self._process_socket_data()
+        if self.mHTTPheader['content-type'] == 'text/json':
             print("Recived request", repr(self.json), "from", self.addr)
         else:
-            self.json = data 
-            content_type = self.mHTTPheader["content-type"]
             print(f"Recieved {content_type} request from {self.addr}.")
                 
     def read(self):
@@ -118,7 +82,7 @@ class ServerSocketHandler:
         if not self.mHTTPheader:
             self._process_mHTTP_headers()
         
-        self._process_socket_data()
+        self._server_socket_process_wrapper()
         self.callback_response()
     
     def query_database(self):
@@ -223,7 +187,3 @@ PORT = 65432
 addr = (HOST,PORT)
 server = WebServer(addr, 5)
 server.run()
-
-
-
-
