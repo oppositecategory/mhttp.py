@@ -6,11 +6,11 @@ import threading
 import logging
 from abc import ABC, abstractmethod
 from socket import *
+import selectors
 
 from protocol import mHTTPProtocol
 
-#sel = selectors.DefaultSelector()
-messages = [b"Message 1 from client.", b"Message 2 from client."]
+sel = selectors.DefaultSelector()
 
 class ClientmHTTPSocket(socket, mHTTPProtocol):
     """ Implements mHTTP client-side."""
@@ -107,7 +107,6 @@ class ClientmHTTPSocket(socket, mHTTPProtocol):
     
     def _send_request(self):
         if self._buffer:
-            print(f"Sending request to server.")
             try:
                 total_sent = 0
                 while total_sent < len(self._buffer):
@@ -156,7 +155,45 @@ class ClientmHTTPSocket(socket, mHTTPProtocol):
 
 HOST = "127.0.0.1"  # The server's hostname or IP address
 PORT = 65432  # The port used by the server
+num_conns = 5 
 
+def start_connections(host, port, num_conns):
+    server_addr = (host, port)
+    for i in range(0, num_conns):
+        connid = i + 1
+        print("starting connection", connid, "to", server_addr)
+        sock = ClientmHTTPSocket('r',i)
+        sock.setblocking(False)
+        sock.connect_ex(server_addr)
+        events = selectors.EVENT_READ | selectors.EVENT_WRITE
+        sel.register(sock, events)
+
+
+def handle_connection(key, mask):
+    sock = key.fileobj
+    if mask & selectors.EVENT_READ:
+        sock.recv()
+    if mask & selectors.EVENT_WRITE:
+        sock.send()
+
+
+"""
+start_connections(HOST, PORT, num_conns)
+try:
+    while True:
+        events = sel.select(timeout=1)
+        if events:
+            for key, mask in events:
+                handle_connection(key, mask)    
+        # Check for a socket being monitored to continue.
+        if not sel.get_map():
+            break
+except KeyboardInterrupt:
+    print("caught keyboard interrupt, exiting")
+finally:
+    sel.close()
+
+"""
 with ClientmHTTPSocket('r',5) as s:
     s.connect((HOST, PORT))
     s.send()

@@ -35,7 +35,7 @@ class mHTTPProtocol(ABC):
     def _process_mHTTP_headers(self):
         headers = {}
         headerlen = self._mHTTPheaders_len
-        print(self._buffer[:headerlen])
+        #print("buffer", self._buffer)
         if len(self._buffer) >= headerlen:
             header = self._buffer[:headerlen].decode("utf-8")
             self._buffer = self._buffer[headerlen:]

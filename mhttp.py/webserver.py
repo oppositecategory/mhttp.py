@@ -76,6 +76,7 @@ class ServerSocketHandler(protocol.mHTTPProtocol):
                 
     def read(self):
         self._read()
+        print(self._buffer)
         if not self._mHTTPheaders_len:
             self._process_proto_header()
         
