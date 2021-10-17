@@ -28,10 +28,10 @@ class ClientmHTTPSocket(socket, mHTTPProtocol):
         # To access low-level sockets api we need to access the event loop.
         self.loop = asyncio.get_event_loop()
 
-    async def _read(self):
+    def _read(self):
         try:
-            #data = super(socket,self).recv(4096)
-            data = self.loop.sock_recv(super(socket,self))
+            data = super(socket,self).recv(4096)
+            #data = self.loop.sock_recv(super(socket,self))
         except BlockingIOError:
             pass 
         else:
@@ -93,7 +93,7 @@ class ClientmHTTPSocket(socket, mHTTPProtocol):
         #       for the whitespace added for extracting.
         self._mHTTPheaders_len = struct.pack(">H", len(self.response_mHTTPheader)+1)
 
-    async def send(self):
+    def send(self):
         if not self.json:
             self._create_json_body()
         
@@ -104,11 +104,12 @@ class ClientmHTTPSocket(socket, mHTTPProtocol):
         self._buffer += self.response_mHTTPheader
         self._buffer += b" "
         self._buffer += bytes(self.json,'utf-8')
-        await self._send_request()
+        self._send_request()
     
-    async def _send_request(self):
+    def _send_request(self):
         if self._buffer:
             try:
+                """
                 print("Buffer state before sending:", self._buffer)
                 await self.loop.sock_sendall(super(socket,self), self._buffer)
                 """
@@ -118,7 +119,6 @@ class ClientmHTTPSocket(socket, mHTTPProtocol):
                     if sent == 0:
                         raise RuntimeError(f"Lost connectiong to server.")
                     total_sent += sent
-                """
             except BlockingIOError:
                 pass
             finally:
@@ -141,7 +141,7 @@ class ClientmHTTPSocket(socket, mHTTPProtocol):
         else:
             print(f"Recieved {content_type} data from server.")
     
-    async def recv(self):
+    def recv(self):
         self._read()
         #print(repr(self._buffer))
         if not self._mHTTPheaders_len:
@@ -162,7 +162,7 @@ HOST = "127.0.0.1"  # The server's hostname or IP address
 PORT = 65432  # The port used by the server
 num_conns = 5
 
-
+"""
 async def main():
     tasks = []
     for i in range(10):
@@ -174,8 +174,6 @@ async def main():
 
 asyncio.run(main())
 
-
-"""
 start_connections(HOST, PORT, num_conns)
 
 def handle_connection(key, mask):
@@ -198,10 +196,12 @@ except KeyboardInterrupt:
     print("caught keyboard interrupt, exiting")
 finally:
     sel.close()
+"""
+
 with ClientmHTTPSocket('r',5) as s:
     s.connect((HOST, PORT))
     s.send()
     data = s.recv()
-"""
+
 
 
