@@ -3,11 +3,6 @@ import struct
 import socket
 from abc import ABC, abstractmethod
 
-def raw_json_encode(resp):
-    dump = json.dumps(resp)
-    raw_bytes = bytes(dump, 'utf-8')
-    return raw_bytes
-
 class mHTTPProtocol(ABC):
     def __init__(self):
         self._buffer = b""

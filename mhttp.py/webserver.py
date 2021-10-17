@@ -1,6 +1,4 @@
-import sys 
 import json 
-import io 
 import struct
 import socket
 import threading
@@ -182,9 +180,31 @@ class WebServer:
         except KeyboardInterrupt:
             logging.info(f"Keybaord inetrrupt, exiting.")
 
+class AsyncWebServer:
+    def __init__(self, addr, max_conn):
+        self.addr = addr 
+        self.max_conn = max_conn 
+        self.lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.lsock.bind(addr)
+    
+    async def run(self):
+        self.lsock.listen(10)
+        self.lsock.setblocking(False)
+
+        loop = asyncio.get_event_loop()
+
+        requests = []
+        while True:
+            client, addr = await loop.sock_accept(self.lsock)
+            handler = ServerSocketHandler(client, addr)
+            requests.append(handler.read())
+        asyncio.gather(*requests)
+
 
 HOST = '127.0.0.1'
 PORT = 65432
 addr = (HOST,PORT)
+
+
 server = WebServer(addr, 5)
 server.run()
