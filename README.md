@@ -1,6 +1,7 @@
 # mHTTP.py 
 
-mHTTP is a small multithreaded websocket written in Python implementing application layer protocol above the TCP layer that mimicks the HTTP, mHTTP (minimal http), with Elliptic Curve-Diffie-Hellman (ECDH) scheme to encrypt communication. 
+mHTTP is a small multithreaded websocket server written in Python. The library implements an application-layer protocol named mHTTP (minimal HTTP).
+Elliptic-curve Diffie–Hellman scheme is to be added in the socket layer to encrypt communication. 
 
 
 
